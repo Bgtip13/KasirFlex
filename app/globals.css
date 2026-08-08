@@ -24,3 +24,27 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* CETAK STRUK: hanya tampilkan area struk saat print */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #print-area,
+  #print-area * {
+    visibility: visible !important;
+  }
+  #print-area {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+}
+/* PERBAIKAN KONTRAST TEKS: abu-abu terang dibuat lebih gelap & jelas */
+.text-slate-400 { color: #475569 !important; }   /* lebih gelap */
+.text-slate-500 { color: #334155 !important; }   /* hampir hitam */
+input::placeholder, textarea::placeholder { color: #64748b !important; }
