@@ -1,13 +1,14 @@
 'use client';
+
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import AutoLogoutProvider from '@/components/AutoLogoutProvider';
 import Struk from '@/components/Struk';
-import printStruk from '@/components/printStruk';
 
 type Product = { id: string; nama: string; harga: number; kategori: string | null };
 type CartItem = { key: number; nama: string; harga: number; qty: number };
+type TokoData = { nama_toko: string; no_hp: string; alamat: string };
 type StrukData = { invoiceNo: string; tanggal: string; items: { nama: string; qty: number; harga: number }[]; total: number };
 
 export default function BuatNotaPage() {
@@ -17,7 +18,7 @@ export default function BuatNotaPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [manual, setManual] = useState({ nama: '', harga: '', qty: '1' });
   const [showManual, setShowManual] = useState(false);
-  const [toko, setToko] = useState({ nama_toko: '', no_hp: '', alamat: '' });
+  const [toko, setToko] = useState<TokoData>({ nama_toko: '', no_hp: '', alamat: '' });
   const [struk, setStruk] = useState<StrukData | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -70,6 +71,7 @@ export default function BuatNotaPage() {
     const qty = Number(manual.qty) || 1;
     if (!nama || !harga) return;
 
+    // Simpan juga ke master produk agar muncul di daftar lain kali
     await supabase.from('products').insert({ nama, harga }).select().single();
 
     setCart((prev) => [...prev, { key: ++keyRef.current, nama, harga, qty }]);
@@ -95,9 +97,11 @@ export default function BuatNotaPage() {
     setSaving(true);
     setError('');
 
+    // 1. Ambil nomor nota otomatis (KF-YYMMDDNNN)
     const { data: invoiceNo, error: invErr } = await supabase.rpc('generate_invoice_no');
     if (invErr) { setError('Gagal membuat nomor nota'); setSaving(false); return; }
 
+    // 2. Simpan transaksi
     const { data: txn, error: txnErr } = await supabase
       .from('transactions')
       .insert({ invoice_no: invoiceNo, total_amount: total })
@@ -105,6 +109,7 @@ export default function BuatNotaPage() {
       .single();
     if (txnErr) { setError('Gagal menyimpan nota'); setSaving(false); return; }
 
+    // 3. Simpan item-itemnya
     const items = cart.map((c) => ({
       transaction_id: txn.id,
       item_name: c.nama,
@@ -115,6 +120,7 @@ export default function BuatNotaPage() {
     const { error: itemsErr } = await supabase.from('transaction_items').insert(items);
     if (itemsErr) { setError('Gagal menyimpan item nota'); setSaving(false); return; }
 
+    // 4. Tampilkan preview struk
     const tanggal = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
     setStruk({
       invoiceNo,
@@ -244,7 +250,7 @@ export default function BuatNotaPage() {
               <Struk {...struk} toko={toko} />
               <div className="mt-4 flex gap-2">
                 <button
-                  onClick={() => printStruk({ ...struk, toko })}
+                  onClick={() => window.print()}
                   className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
                 >
                   🖨️ Cetak
