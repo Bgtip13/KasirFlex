@@ -3,11 +3,16 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { friendlyAuthError } from '@/lib/format';
+import AuthLayout from '@/components/AuthLayout';
+import { Alert, Spinner } from '@/components/ui';
+import { IconEye, IconEyeOff } from '@/components/icons';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -16,48 +21,73 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
 
     if (error) {
-      setError(error.message);
+      setError(friendlyAuthError(error.message));
       setLoading(false);
       return;
     }
 
-    router.push('/dashboard');
+    router.replace('/dashboard');
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-      <form onSubmit={handleLogin} className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-2xl">
-        <div className="mb-6 text-center">
-          <img src="/logo.png" alt="KasirFlex" className="mx-auto mb-3 h-16 w-16 rounded-xl object-contain" />
-          <h1 className="text-xl font-bold text-slate-800">KasirFlex</h1>
-          <p className="text-xs text-slate-400">by NB Projects</p>
+    <AuthLayout title="Masuk ke KasirFlex" subtitle="Kelola nota & penjualan toko Anda">
+      <form onSubmit={handleLogin} className="space-y-4">
+        <div>
+          <label htmlFor="email" className="label">Email</label>
+          <input
+            id="email"
+            type="email"
+            required
+            autoComplete="email"
+            inputMode="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="input"
+            placeholder="nama@email.com"
+          />
         </div>
 
-        <label className="mb-1 block text-sm font-medium text-slate-600">Email</label>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-          placeholder="nama@email.com" />
+        <div>
+          <label htmlFor="password" className="label">Password</label>
+          <div className="relative">
+            <input
+              id="password"
+              type={showPw ? 'text' : 'password'}
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input pr-12"
+              placeholder="••••••••"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              aria-label={showPw ? 'Sembunyikan password' : 'Tampilkan password'}
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-500 hover:text-slate-700"
+            >
+              {showPw ? <IconEyeOff className="h-5 w-5" /> : <IconEye className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
 
-        <label className="mb-1 block text-sm font-medium text-slate-600">Password</label>
-        <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-          placeholder="••••••••" />
+        {error && <Alert>{error}</Alert>}
 
-        {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
-
-        <button type="submit" disabled={loading}
-          className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+        <button type="submit" disabled={loading} className="btn btn-primary w-full py-3">
+          {loading && <Spinner className="h-4 w-4" />}
           {loading ? 'Masuk...' : 'Masuk'}
         </button>
 
-        <p className="mt-4 text-center text-sm text-slate-500">
+        <p className="text-center text-sm text-slate-600">
           Belum punya akun?{' '}
-          <Link href="/register" className="font-semibold text-emerald-600 hover:underline">Daftar akun</Link>
+          <Link href="/register" className="font-semibold text-emerald-700 hover:underline">
+            Daftar akun
+          </Link>
         </p>
       </form>
-    </div>
+    </AuthLayout>
   );
 }

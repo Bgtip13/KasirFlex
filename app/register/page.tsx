@@ -3,12 +3,17 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { friendlyAuthError } from '@/lib/format';
+import AuthLayout from '@/components/AuthLayout';
+import { Alert, Spinner } from '@/components/ui';
+import { IconEye, IconEyeOff } from '@/components/icons';
 
 export default function RegisterPage() {
   const router = useRouter();
   const [namaToko, setNamaToko] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [kode, setKode] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -20,70 +25,128 @@ export default function RegisterPage() {
     setError('');
     setSuccess('');
 
+    const nama = namaToko.trim();
+
+    // Kode aktivasi selalu huruf besar; nama toko ikut dikirim agar bisa disimpan
+    // oleh database saat akun dibuat (tetap bekerja walau konfirmasi email aktif).
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: email.trim(),
       password,
-      options: { data: { activation_code: kode.trim() } },
+      options: { data: { activation_code: kode.trim().toUpperCase(), nama_toko: nama } },
     });
 
     if (error) {
-      setError(error.message); // pesan error asli dari Supabase
+      setError(friendlyAuthError(error.message));
       setLoading(false);
       return;
     }
 
-    // Simpan nama toko ke profil
-    if (data.user) {
-      await supabase.from('profiles').update({ nama_toko: namaToko }).eq('id', data.user.id);
+    // Supabase mengembalikan user "palsu" tanpa identities bila email sudah terdaftar
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      setError('Email ini sudah terdaftar. Silakan masuk.');
+      setLoading(false);
+      return;
     }
 
-    if (data.session) {
-      router.push('/dashboard');
-    } else {
-      setSuccess('Akun berhasil dibuat! Silakan masuk.');
-      setTimeout(() => router.push('/login'), 1500);
+    if (data.session && data.user) {
+      // Cadangan untuk database lama yang belum membaca nama_toko dari metadata
+      await supabase.from('profiles').update({ nama_toko: nama }).eq('id', data.user.id);
+      router.replace('/dashboard');
+      return;
     }
+
+    setSuccess('Akun berhasil dibuat! Silakan masuk (cek email bila diminta konfirmasi).');
+    setTimeout(() => router.push('/login'), 2000);
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-      <form onSubmit={handleRegister} className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-2xl">
-        <div className="mb-6 text-center">
-          <img src="/logo.png" alt="KasirFlex" className="mx-auto mb-3 h-16 w-16 rounded-xl object-contain" />
-          <h1 className="text-xl font-bold text-slate-800">Daftar Akun</h1>
-          <p className="text-xs text-slate-400">KasirFlex by NB Projects</p>
+    <AuthLayout title="Daftar Akun" subtitle="Aktifkan KasirFlex dengan kode aktivasi">
+      <form onSubmit={handleRegister} className="space-y-4">
+        <div>
+          <label htmlFor="nama" className="label">Nama Toko</label>
+          <input
+            id="nama"
+            type="text"
+            required
+            autoComplete="organization"
+            value={namaToko}
+            onChange={(e) => setNamaToko(e.target.value)}
+            className="input"
+            placeholder="Contoh: Toko Maju Jaya"
+          />
         </div>
 
-        <label className="mb-1 block text-sm font-medium text-slate-600">Nama Toko</label>
-        <input type="text" required value={namaToko} onChange={(e) => setNamaToko(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500" />
+        <div>
+          <label htmlFor="email" className="label">Email</label>
+          <input
+            id="email"
+            type="email"
+            required
+            autoComplete="email"
+            inputMode="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="input"
+            placeholder="nama@email.com"
+          />
+        </div>
 
-        <label className="mb-1 block text-sm font-medium text-slate-600">Email</label>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500" />
+        <div>
+          <label htmlFor="password" className="label">Password</label>
+          <div className="relative">
+            <input
+              id="password"
+              type={showPw ? 'text' : 'password'}
+              required
+              minLength={6}
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input pr-12"
+              placeholder="Minimal 6 karakter"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              aria-label={showPw ? 'Sembunyikan password' : 'Tampilkan password'}
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-500 hover:text-slate-700"
+            >
+              {showPw ? <IconEyeOff className="h-5 w-5" /> : <IconEye className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
 
-        <label className="mb-1 block text-sm font-medium text-slate-600">Password</label>
-        <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500" />
+        <div>
+          <label htmlFor="kode" className="label">Kode Aktivasi</label>
+          <input
+            id="kode"
+            type="text"
+            required
+            autoCapitalize="characters"
+            autoComplete="off"
+            spellCheck={false}
+            value={kode}
+            onChange={(e) => setKode(e.target.value.toUpperCase())}
+            className="input font-mono tracking-wider"
+            placeholder="KF-ABCD-1234"
+          />
+        </div>
 
-        <label className="mb-1 block text-sm font-medium text-slate-600">Kode Aktivasi</label>
-        <input type="text" required value={kode} onChange={(e) => setKode(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-          placeholder="Contoh: KF-ABCD-1234" />
+        {error && <Alert>{error}</Alert>}
+        {success && <Alert type="success">{success}</Alert>}
 
-        {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
-        {success && <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-600">{success}</p>}
-
-        <button type="submit" disabled={loading}
-          className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+        <button type="submit" disabled={loading || !!success} className="btn btn-primary w-full py-3">
+          {loading && <Spinner className="h-4 w-4" />}
           {loading ? 'Mendaftar...' : 'Daftar'}
         </button>
 
-        <p className="mt-4 text-center text-sm text-slate-500">
+        <p className="text-center text-sm text-slate-600">
           Sudah punya akun?{' '}
-          <Link href="/login" className="font-semibold text-emerald-600 hover:underline">Masuk</Link>
+          <Link href="/login" className="font-semibold text-emerald-700 hover:underline">
+            Masuk
+          </Link>
         </p>
       </form>
-    </div>
+    </AuthLayout>
   );
 }
