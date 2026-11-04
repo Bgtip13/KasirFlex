@@ -1,111 +1,94 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import AppShell from '@/components/AppShell';
-import AutoLogoutProvider from '@/components/AutoLogoutProvider';
+import { useProfile } from '@/components/AppShell';
+import Struk from '@/components/Struk';
+import { Alert, PageHeader, Spinner } from '@/components/ui';
 
 export default function PengaturanPage() {
-  const [namaToko, setNamaToko] = useState('');
-  const [noHp, setNoHp] = useState('');
-  const [alamat, setAlamat] = useState('');
-  const [loading, setLoading] = useState(true);
+  const { profile, refresh } = useProfile();
+  // Profil sudah dimuat oleh AppShell, jadi form langsung terisi tanpa loading ulang
+  const [namaToko, setNamaToko] = useState(profile.nama_toko);
+  const [noHp, setNoHp] = useState(profile.no_hp);
+  const [alamat, setAlamat] = useState(profile.alamat);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function load() {
-    const { data: userData } = await supabase.auth.getUser();
-    if (userData.user) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('nama_toko, no_hp, alamat')
-        .eq('id', userData.user.id)
-        .single();
-      if (data) {
-        setNamaToko(data.nama_toko || '');
-        setNoHp(data.no_hp || '');
-        setAlamat(data.alamat || '');
-      }
-    }
-    setLoading(false);
-  }
-
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
     setError('');
-
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) { setError('Sesi tidak ditemukan'); setSaving(false); return; }
+    setSuccess('');
+    if (!namaToko.trim()) {
+      setError('Nama toko tidak boleh kosong.');
+      return;
+    }
+    setSaving(true);
 
     const { error } = await supabase
       .from('profiles')
-      .update({ nama_toko: namaToko, no_hp: noHp, alamat: alamat })
-      .eq('id', userData.user.id);
+      .update({ nama_toko: namaToko.trim(), no_hp: noHp.trim(), alamat: alamat.trim() })
+      .eq('id', profile.id);
 
     if (error) {
       setError('Gagal menyimpan: ' + error.message);
     } else {
-      setSuccess('Pengaturan tersimpan ✅');
+      await refresh();
+      setSuccess('Pengaturan tersimpan');
       setTimeout(() => setSuccess(''), 3000);
     }
     setSaving(false);
   }
 
   return (
-    <AutoLogoutProvider>
-      <AppShell>
-        <h1 className="mb-4 text-lg font-bold text-slate-800">Pengaturan Toko</h1>
+    <div className="print:hidden">
+      <PageHeader title="Pengaturan Toko" subtitle="Informasi ini tampil di bagian atas struk saat mencetak nota." />
 
-        {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
-        {success && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-600">{success}</p>}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5 lg:gap-6">
+        <form onSubmit={save} className="card space-y-4 p-4 sm:p-6 lg:col-span-3">
+          {error && <Alert>{error}</Alert>}
+          {success && <Alert type="success">{success}</Alert>}
 
-        {loading ? (
-          <p className="py-10 text-center text-sm text-slate-400">Memuat...</p>
-        ) : (
-          <form onSubmit={save} className="max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="mb-4 text-xs text-slate-400">
-              Info ini akan tampil di <b>header struk</b> saat mencetak nota.
-            </p>
+          <div>
+            <label htmlFor="nama" className="label">Nama Toko</label>
+            <input id="nama" type="text" value={namaToko} onChange={(e) => setNamaToko(e.target.value)} placeholder="Contoh: Toko Maju Jaya" autoComplete="organization" className="input" />
+          </div>
 
-            <label className="mb-1 block text-sm font-medium text-slate-600">Nama Toko</label>
-            <input
-              type="text" value={namaToko}
-              onChange={(e) => setNamaToko(e.target.value)}
-              placeholder="Contoh: Toko NB"
-              className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-            />
+          <div>
+            <label htmlFor="hp" className="label">No. HP / Telepon</label>
+            <input id="hp" type="tel" inputMode="tel" value={noHp} onChange={(e) => setNoHp(e.target.value)} placeholder="Contoh: 0812-3456-7890" autoComplete="tel" className="input" />
+          </div>
 
-            <label className="mb-1 block text-sm font-medium text-slate-600">No. HP / Telepon</label>
-            <input
-              type="text" value={noHp}
-              onChange={(e) => setNoHp(e.target.value)}
-              placeholder="Contoh: 0812-3456-7890"
-              className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-            />
+          <div>
+            <label htmlFor="alamat" className="label">Alamat</label>
+            <textarea id="alamat" value={alamat} onChange={(e) => setAlamat(e.target.value)} placeholder="Contoh: Jl. Merdeka No. 1, Semarang" rows={3} className="input resize-none" />
+          </div>
 
-            <label className="mb-1 block text-sm font-medium text-slate-600">Alamat</label>
-            <textarea
-              value={alamat}
-              onChange={(e) => setAlamat(e.target.value)}
-              placeholder="Contoh: Jl. Merdeka No. 1, Jakarta"
-              rows={3}
-              className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-            />
+          <button type="submit" disabled={saving} className="btn btn-primary w-full py-3 sm:w-auto sm:px-8">
+            {saving && <Spinner className="h-4 w-4" />}
+            {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
+          </button>
+        </form>
 
-            <button
-              type="submit" disabled={saving}
-              className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {saving ? 'Menyimpan...' : '💾 Simpan Pengaturan'}
-            </button>
-          </form>
-        )}
-      </AppShell>
-    </AutoLogoutProvider>
+        {/* PRATINJAU STRUK LANGSUNG */}
+        <aside className="lg:col-span-2">
+          <div className="card p-4 sm:p-5 lg:sticky lg:top-24">
+            <p className="mb-3 text-sm font-semibold text-slate-800">Pratinjau struk</p>
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
+              <Struk
+                toko={{ nama_toko: namaToko.trim(), no_hp: noHp.trim(), alamat: alamat.trim() }}
+                invoiceNo="KF-000000001"
+                tanggal="Contoh tampilan"
+                items={[
+                  { nama: 'Contoh Produk A', qty: 2, harga: 15000 },
+                  { nama: 'Contoh Produk B', qty: 1, harga: 8500 },
+                ]}
+                total={38500}
+              />
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
   );
 }

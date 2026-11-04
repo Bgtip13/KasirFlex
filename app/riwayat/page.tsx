@@ -1,148 +1,164 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import AppShell from '@/components/AppShell';
-import AutoLogoutProvider from '@/components/AutoLogoutProvider';
-import Struk from '@/components/Struk';
-import printStruk from '@/components/printStruk';
+import { useProfile } from '@/components/AppShell';
+import { dateKey, fmtDateTime, rupiah, todayKey } from '@/lib/format';
+import ReceiptModal from '@/components/ReceiptModal';
+import { Alert, EmptyState, PageHeader, Spinner } from '@/components/ui';
+import { IconHistory, IconPencil, IconPrinter } from '@/components/icons';
+import type { StrukProps } from '@/components/Struk';
 
 type Txn = { id: string; invoice_no: string; total_amount: number; created_at: string };
-type StrukData = { invoiceNo: string; tanggal: string; items: { nama: string; qty: number; harga: number }[]; total: number };
+type StrukData = Omit<StrukProps, 'toko'>;
 
 export default function RiwayatPage() {
-  const router = useRouter();
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const { profile } = useProfile();
+  const [from, setFrom] = useState(todayKey);
+  const [to, setTo] = useState(todayKey);
   const [list, setList] = useState<Txn[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [struk, setStruk] = useState<StrukData | null>(null);
-  const [toko, setToko] = useState({ nama_toko: '', no_hp: '', alamat: '' });
+  const [opening, setOpening] = useState<string | null>(null);
 
-  useEffect(() => {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    setFrom(`${y}-${m}-${d}`);
-    setTo(`${y}-${m}-${d}`);
-    loadToko();
-  }, []);
+  const invalidRange = !!from && !!to && from > to;
 
+  // Muat otomatis setiap rentang tanggal berubah (dengan pembatalan agar hasil lama tidak menimpa yang baru)
   useEffect(() => {
-    if (from && to) search();
+    if (!from || !to || from > to) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError('');
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('id, invoice_no, total_amount, created_at')
+        .gte('created_at', new Date(from + 'T00:00:00').toISOString())
+        .lte('created_at', new Date(to + 'T23:59:59.999').toISOString())
+        .order('created_at', { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        setError('Gagal memuat riwayat: ' + error.message);
+        setList([]);
+      } else {
+        setList(data ?? []);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [from, to]);
 
-  async function loadToko() {
-    const { data: userData } = await supabase.auth.getUser();
-    if (userData.user) {
-      const { data } = await supabase
-        .from('profiles').select('nama_toko, no_hp, alamat').eq('id', userData.user.id).single();
-      if (data) setToko(data);
-    }
-  }
-
-  async function search() {
-    setLoading(true);
-    const fromDate = new Date(from + 'T00:00:00');
-    const toDate = new Date(to + 'T23:59:59.999');
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('id, invoice_no, total_amount, created_at')
-      .gte('created_at', fromDate.toISOString())
-      .lte('created_at', toDate.toISOString())
-      .order('created_at', { ascending: false });
-    if (!error && data) setList(data);
-    setLoading(false);
+  function setRange(days: number | 'month') {
+    const end = new Date();
+    const start = new Date();
+    if (days === 'month') start.setDate(1);
+    else start.setDate(start.getDate() - (days - 1));
+    setFrom(dateKey(start));
+    setTo(dateKey(end));
   }
 
   async function openPrint(txn: Txn) {
-    const { data: items } = await supabase
+    setOpening(txn.id);
+    setError('');
+    const { data: items, error } = await supabase
       .from('transaction_items')
       .select('item_name, quantity, price')
       .eq('transaction_id', txn.id);
-    const tanggal = new Date(txn.created_at).toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
+    setOpening(null);
+    if (error) {
+      setError('Gagal memuat item nota: ' + error.message);
+      return;
+    }
     setStruk({
       invoiceNo: txn.invoice_no,
-      tanggal,
-      items: (items || []).map((it) => ({ nama: it.item_name, qty: it.quantity, harga: Number(it.price) })),
+      tanggal: fmtDateTime(txn.created_at),
+      items: (items ?? []).map((it) => ({ nama: it.item_name, qty: it.quantity, harga: Number(it.price) })),
       total: Number(txn.total_amount),
     });
   }
 
+  const sum = list.reduce((s, t) => s + Number(t.total_amount), 0);
+  const todayStr = todayKey();
+  const isToday = from === todayStr && to === todayStr;
+
   return (
-    <AutoLogoutProvider>
-      <AppShell>
-        <h1 className="mb-4 text-lg font-bold text-slate-800">Riwayat Nota</h1>
+    <>
+      <div className="print:hidden">
+        <PageHeader title="Riwayat Nota" subtitle="Lihat, cetak ulang, atau edit nota yang sudah dibuat." />
 
         {/* FILTER TANGGAL */}
-        <div className="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Dari Tanggal</label>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500" />
+        <section className="card mb-4 p-4">
+          <div className="grid grid-cols-2 gap-3 sm:max-w-md">
+            <div>
+              <label htmlFor="from" className="label">Dari tanggal</label>
+              <input id="from" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="input" />
+            </div>
+            <div>
+              <label htmlFor="to" className="label">Sampai tanggal</label>
+              <input id="to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="input" />
+            </div>
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Sampai Tanggal</label>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500" />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button onClick={() => setRange(1)} className={`btn btn-sm ${isToday ? 'btn-primary' : 'btn-outline'}`}>Hari ini</button>
+            <button onClick={() => setRange(7)} className="btn btn-sm btn-outline">7 hari</button>
+            <button onClick={() => setRange(30)} className="btn btn-sm btn-outline">30 hari</button>
+            <button onClick={() => setRange('month')} className="btn btn-sm btn-outline">Bulan ini</button>
           </div>
-          <button onClick={search}
-            className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-            {loading ? 'Mencari...' : '🔍 Cari'}
-          </button>
-        </div>
+          {invalidRange && <div className="mt-3"><Alert>Tanggal “dari” tidak boleh lebih besar dari tanggal “sampai”.</Alert></div>}
+        </section>
 
-        {/* DAFTAR NOTA */}
-        {list.length === 0 ? (
-          <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
-            Tidak ada nota pada rentang tanggal ini.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {list.map((t) => (
-              <div key={t.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800">{t.invoice_no}</p>
-                  <p className="text-xs text-slate-400">
-                    {new Date(t.created_at).toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' })}
-                  </p>
-                </div>
-                <p className="font-bold text-emerald-600">Rp {Number(t.total_amount).toLocaleString('id-ID')}</p>
-                <div className="flex gap-2">
-                  <button onClick={() => openPrint(t)}
-                    className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700">
-                    🖨️ Cetak
-                  </button>
-                  <button onClick={() => router.push(`/riwayat/${t.id}/edit`)}
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-                    ✏️ Edit
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {error && <div className="mb-4"><Alert>{error}</Alert></div>}
 
-        {/* MODAL CETAK ULANG */}
-        {struk && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-4">
-              <Struk {...struk} toko={toko} />
-              <div className="mt-4 flex gap-2">
-                <button onClick={() => printStruk({ ...struk, toko })}
-                  className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white hover:bg-emerald-700">
-                  🖨️ Cetak
-                </button>
-                <button onClick={() => setStruk(null)}
-                  className="flex-1 rounded-xl border border-slate-300 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-                  Tutup
-                </button>
-              </div>
+        {/* RINGKASAN */}
+        {!invalidRange && !loading && list.length > 0 && (
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            <div className="card p-3.5">
+              <p className="text-xs text-slate-600">Jumlah nota</p>
+              <p className="text-lg font-bold text-slate-900 sm:text-xl">{list.length}</p>
+            </div>
+            <div className="card p-3.5">
+              <p className="text-xs text-slate-600">Total penjualan</p>
+              <p className="truncate text-lg font-bold text-emerald-700 sm:text-xl">{rupiah(sum)}</p>
             </div>
           </div>
         )}
-      </AppShell>
-    </AutoLogoutProvider>
+
+        {/* DAFTAR NOTA */}
+        {loading ? (
+          <div className="card flex items-center justify-center gap-2 p-10 text-sm text-slate-500">
+            <Spinner className="h-4 w-4 text-emerald-600" /> Memuat nota...
+          </div>
+        ) : list.length === 0 ? (
+          <div className="card">
+            <EmptyState icon={<IconHistory className="h-6 w-6" />} title="Tidak ada nota" hint="Tidak ada nota pada rentang tanggal ini." />
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {list.map((t) => (
+              <li key={t.id} className="card flex flex-wrap items-center gap-x-4 gap-y-3 p-4">
+                <div className="min-w-0 flex-1 basis-40">
+                  <p className="truncate text-sm font-bold text-slate-900">{t.invoice_no}</p>
+                  <p className="text-xs text-slate-500">{fmtDateTime(t.created_at)}</p>
+                </div>
+                <p className="text-base font-bold text-emerald-700">{rupiah(t.total_amount)}</p>
+                <div className="flex w-full gap-2 sm:w-auto">
+                  <button onClick={() => openPrint(t)} disabled={opening === t.id} className="btn btn-dark btn-sm flex-1 sm:flex-none">
+                    {opening === t.id ? <Spinner className="h-3.5 w-3.5" /> : <IconPrinter className="h-3.5 w-3.5" />} Cetak
+                  </button>
+                  <Link href={`/riwayat/${t.id}/edit`} className="btn btn-outline btn-sm flex-1 sm:flex-none">
+                    <IconPencil className="h-3.5 w-3.5" /> Edit
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {struk && <ReceiptModal data={struk} toko={profile} onClose={() => setStruk(null)} />}
+    </>
   );
 }
