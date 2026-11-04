@@ -71,7 +71,6 @@ export default function BuatNotaPage() {
     const qty = Number(manual.qty) || 1;
     if (!nama || !harga) return;
 
-    // Simpan juga ke master produk agar muncul di daftar lain kali
     await supabase.from('products').insert({ nama, harga }).select().single();
 
     setCart((prev) => [...prev, { key: ++keyRef.current, nama, harga, qty }]);
@@ -97,11 +96,9 @@ export default function BuatNotaPage() {
     setSaving(true);
     setError('');
 
-    // 1. Ambil nomor nota otomatis (KF-YYMMDDNNN)
     const { data: invoiceNo, error: invErr } = await supabase.rpc('generate_invoice_no');
     if (invErr) { setError('Gagal membuat nomor nota'); setSaving(false); return; }
 
-    // 2. Simpan transaksi
     const { data: txn, error: txnErr } = await supabase
       .from('transactions')
       .insert({ invoice_no: invoiceNo, total_amount: total })
@@ -109,7 +106,6 @@ export default function BuatNotaPage() {
       .single();
     if (txnErr) { setError('Gagal menyimpan nota'); setSaving(false); return; }
 
-    // 3. Simpan item-itemnya
     const items = cart.map((c) => ({
       transaction_id: txn.id,
       item_name: c.nama,
@@ -120,7 +116,6 @@ export default function BuatNotaPage() {
     const { error: itemsErr } = await supabase.from('transaction_items').insert(items);
     if (itemsErr) { setError('Gagal menyimpan item nota'); setSaving(false); return; }
 
-    // 4. Tampilkan preview struk
     const tanggal = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
     setStruk({
       invoiceNo,
@@ -246,7 +241,7 @@ export default function BuatNotaPage() {
         {/* MODAL PREVIEW STRUK */}
         {struk && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-4">
+            <div className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-4 shadow-xl">
               <Struk {...struk} toko={toko} />
               <div className="mt-4 flex gap-2">
                 <button
