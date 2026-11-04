@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KasirFlex by NB Projects
 
-## Getting Started
+Aplikasi kasir berbasis web: buat nota, cetak struk, riwayat penjualan, dan panel admin
+untuk kode aktivasi pelanggan. Dibuat dengan **Next.js (App Router)**, **Tailwind CSS 4**, dan **Supabase**.
 
-First, run the development server:
+Tampilan responsif untuk **HP** (navigasi bawah), **tablet**, dan **PC** (sidebar).
+
+## Menjalankan di komputer
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # lalu isi URL & anon key Supabase
+npm run dev                  # buka http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Menyiapkan database (Supabase)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Proyek baru:** jalankan `supabase/schema.sql` di *SQL Editor*
+  (buat dulu user `admin@nbprojects.com` di *Authentication → Add user*).
+- **Database yang sudah berjalan:** jalankan `supabase/patch-2026-11.sql`
+  (perbaikan keamanan + fungsi Panel Admin). **Baca komentar di dalam file sebelum menjalankan.**
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Struktur singkat
 
-## Learn More
+```
+app/
+  login, register          halaman publik
+  (app)/                   halaman setelah login, berbagi satu AppShell
+    dashboard, buat-nota, riwayat, riwayat/[id]/edit, pengaturan, admin
+components/                AppShell, Modal, Struk, ReceiptModal, CartItemRow, ...
+lib/                       supabase client, format (Rupiah/tanggal), useCart
+supabase/                  schema.sql dan patch SQL
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Mencetak struk
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Tombol **Cetak** memakai dialog cetak browser (`window.print()`); hanya struk yang tercetak.
+Di HP, pilih printer/“Simpan sebagai PDF” dari dialog cetak. Untuk printer thermal,
+pilih ukuran kertas 58/80 mm di pengaturan printer.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deploy ke Vercel dan isi dua environment variable di atas pada pengaturan proyek.
